@@ -1,0 +1,9 @@
+body { font-family: Arial; background: #f0f2f5; text-align: center; }
+h2 { color: #333; }
+input, button { padding: 10px; margin: 5px; border-radius: 5px; }
+button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+button:hover { background-color: #0056b3; }
+p.success { color: green; }
+p.error { color: red; }
+table { margin: auto; border-collapse: collapse; background: white; }
+th, td { padding: 10px; }

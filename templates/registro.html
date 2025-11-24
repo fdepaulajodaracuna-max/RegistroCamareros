@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Registro de Horas</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<h2>Registro de Horas</h2>
+<form method="POST">
+    <input type="text" name="nombre" placeholder="Tu nombre" required><br>
+    <input type="text" name="entrada" placeholder="Hora de entrada HH:MM" required><br>
+    <input type="text" name="salida" placeholder="Hora de salida HH:MM" required><br>
+    <button type="submit">Registrar</button>
+</form>
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <p class="{{ category }}">{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+</body>
+</html>

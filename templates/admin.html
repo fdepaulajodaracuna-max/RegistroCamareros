@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Panel Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<h2>Panel de Administración</h2>
+<table border="1">
+    <tr>
+        <th>Nombre</th>
+        <th>Fecha</th>
+        <th>Entrada</th>
+        <th>Salida</th>
+    </tr>
+    {% for reg in registros %}
+    <tr>
+        <td>{{ reg.nombre }}</td>
+        <td>{{ reg.fecha }}</td>
+        <td>{{ reg.entrada }}</td>
+        <td>{{ reg.salida }}</td>
+    </tr>
+    {% endfor %}
+</table>
+</body>
+</html>

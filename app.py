@@ -1,155 +1,86 @@
-from flask import Flask, request, render_template_string
-from datetime import datetime
-import os
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message
 from twilio.rest import Client
-import smtplib
-from email.mime.text import MIMEText
+import os
+from datetime import date
 
 app = Flask(__name__)
-registro_horas = {}  # {nombre: fecha_registro}
+app.config['SECRET_KEY'] = 'supersecretkey'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- FUNCIONES DE NOTIFICACIÓN ---
-def enviar_whatsapp(mensaje, numero_destino):
-    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-    client = Client(account_sid, auth_token)
-    client.messages.create(
-        body=mensaje,
-        from_='whatsapp:+14155238886',
-        to=f'whatsapp:{numero_destino}'
-    )
+# Correo
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT'))
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
 
-def enviar_correo(asunto, cuerpo, destino):
-    remitente = os.environ.get("EMAIL_USER")
-    password = os.environ.get("EMAIL_PASS")
-    msg = MIMEText(cuerpo)
-    msg['Subject'] = asunto
-    msg['From'] = remitente
-    msg['To'] = destino
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(remitente, password)
-        server.send_message(msg)
+db = SQLAlchemy(app)
+mail = Mail(app)
 
-# --- RUTA PRINCIPAL ---
-@app.route("/", methods=["GET", "POST"])
-def index():
-    mensaje = ""
-    alert_type = "info"
-    if request.method == "POST":
-        camarero = request.form.get("camarero").strip()
-        accion = request.form.get("accion")
-        hoy = datetime.now().date()
+# Twilio
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
+TWILIO_WHATSAPP_FROM = os.getenv('TWILIO_WHATSAPP_FROM')
+WHATSAPP_TO = os.getenv('WHATSAPP_TO')
 
-        if registro_horas.get(camarero) == hoy:
-            mensaje = "Ya registraste tus horas hoy."
-            alert_type = "warning"
-        else:
-            registro_horas[camarero] = hoy
-            hora_actual = datetime.now().strftime("%H:%M:%S")
-            mensaje = f"{camarero} registró {accion} a las {hora_actual}"
-            alert_type = "success"
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-            try:
-                enviar_whatsapp(mensaje, os.environ.get("WHATSAPP_NUMERO"))
-                enviar_correo("Registro de horas", mensaje, os.environ.get("EMAIL_DESTINO"))
-            except Exception as e:
-                mensaje += f" (Error notificando: {e})"
-                alert_type = "danger"
+class Registro(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(50), nullable=False)
+    fecha = db.Column(db.String(10), nullable=False)
+    entrada = db.Column(db.String(5), nullable=False)
+    salida = db.Column(db.String(5), nullable=False)
 
-    html = """
-    <!doctype html>
-    <html lang="es">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Registro de Horas</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+db.create_all()
 
-            body {
-                margin:0;
-                height:100vh;
-                font-family: 'Roboto', sans-serif;
-                background: linear-gradient(-45deg, #4facfe, #00f2fe, #43e97b, #38f9d7);
-                background-size: 400% 400%;
-                animation: gradientBG 15s ease infinite;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }
+@app.route('/', methods=['GET', 'POST'])
+def registro():
+    if request.method == 'POST':
+        nombre = request.form['nombre']
+        entrada = request.form['entrada']
+        salida = request.form['salida']
+        hoy = str(date.today())
 
-            @keyframes gradientBG {
-                0%{background-position:0% 50%}
-                50%{background-position:100% 50%}
-                100%{background-position:0% 50%}
-            }
+        # Comprobar si ya hay registro
+        if Registro.query.filter_by(nombre=nombre, fecha=hoy).first():
+            flash('Ya registraste tus horas hoy', 'error')
+            return redirect(url_for('registro'))
 
-            .card {
-                padding: 2rem;
-                border-radius: 1.5rem;
-                box-shadow: 0 0 40px rgba(0,0,0,0.3);
-                width: 100%;
-                max-width: 400px;
-                background: rgba(255,255,255,0.95);
-                text-align: center;
-                transition: transform 0.3s ease;
-            }
+        nuevo_registro = Registro(nombre=nombre, fecha=hoy, entrada=entrada, salida=salida)
+        db.session.add(nuevo_registro)
+        db.session.commit()
 
-            .card:hover {
-                transform: translateY(-10px);
-            }
+        # Enviar correo
+        msg = Message('Nuevo registro de horas', sender=os.getenv('MAIL_USERNAME'),
+                      recipients=[os.getenv('MAIL_USERNAME')])
+        msg.body = f"{nombre} registró entrada: {entrada}, salida: {salida} el {hoy}"
+        mail.send(msg)
 
-            h1 {
-                font-weight: 700;
-                margin-bottom: 1.5rem;
-                color: #333;
-            }
+        # Enviar WhatsApp
+        client.messages.create(
+            body=f"{nombre} registró entrada: {entrada}, salida: {salida} el {hoy}",
+            from_=TWILIO_WHATSAPP_FROM,
+            to=WHATSAPP_TO
+        )
 
-            .btn-entrada {
-                background-color: #28a745;
-                color: white;
-                font-weight: bold;
-                transition: transform 0.2s;
-            }
+        flash('Horas registradas correctamente', 'success')
+        return redirect(url_for('registro'))
 
-            .btn-entrada:hover {
-                transform: scale(1.05);
-            }
+    return render_template('registro.html')
 
-            .btn-salida {
-                background-color: #dc3545;
-                color: white;
-                font-weight: bold;
-                transition: transform 0.2s;
-            }
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    auth = request.authorization
+    if not auth or auth.username != os.getenv('ADMIN_USER') or auth.password != os.getenv('ADMIN_PASS'):
+        return "No autorizado", 401
 
-            .btn-salida:hover {
-                transform: scale(1.05);
-            }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <h1>Registro de Horas</h1>
-          <form method="post">
-            <input type="text" class="form-control mb-3" name="camarero" placeholder="Tu nombre" required>
-            <div class="d-grid gap-2">
-              <button type="submit" name="accion" value="entrada" class="btn btn-entrada btn-lg">Entrada</button>
-              <button type="submit" name="accion" value="salida" class="btn btn-salida btn-lg">Salida</button>
-            </div>
-          </form>
-          {% if mensaje %}
-          <div class="alert alert-{{ alert_type }} mt-3 text-center" role="alert">
-            {{ mensaje }}
-          </div>
-          {% endif %}
-        </div>
-      </body>
-    </html>
-    """
-    return render_template_string(html, mensaje=mensaje, alert_type=alert_type)
+    registros = Registro.query.all()
+    return render_template('admin.html', registros=registros)
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app.run(debug=True)
