@@ -1,24 +1,43 @@
-{% extends "layout.html" %}
-{% block title %}Registro Camarero{% endblock %}
-{% block content %}
-<h2>Registro Camarero</h2>
-<form method="POST">
-    <div class="mb-3">
-        <label>Nombre</label>
-        <input type="text" class="form-control" name="nombre" required>
-    </div>
-    <div class="mb-3">
-        <label>Teléfono (+34xxxxxxx)</label>
-        <input type="text" class="form-control" name="telefono" required>
-    </div>
-    <div class="mb-3">
-        <label>Hora de entrada (HH:MM)</label>
-        <input type="time" class="form-control" name="hora_entrada" required>
-    </div>
-    <div class="mb-3">
-        <label>Hora de salida (HH:MM)</label>
-        <input type="time" class="form-control" name="hora_salida" required>
-    </div>
-    <button type="submit" class="btn btn-primary">Registrar</button>
-</form>
-{% endblock %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro de Camareros</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Registro de Camareros</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul>
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+        <label>Nombre:</label><br>
+        <input type="text" name="nombre" required><br><br>
+
+        <label>Teléfono (solo números, ej: 34600111222):</label><br>
+        <input type="text" name="telefono" required><br><br>
+
+        <label>Fecha trabajada:</label><br>
+        <input type="date" name="fecha" required><br><br>
+
+        <label>Hora entrada:</label><br>
+        <input type="time" name="hora_entrada" required><br><br>
+
+        <label>Hora salida:</label><br>
+        <input type="time" name="hora_salida" required><br><br>
+
+        <label>¿Ha usado coche? </label>
+        <input type="checkbox" name="coche" value="1"><br><br>
+
+        <button type="submit">Registrar</button>
+    </form>
+</body>
+</html>

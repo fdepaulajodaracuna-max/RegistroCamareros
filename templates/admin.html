@@ -1,36 +1,25 @@
-{% extends "layout.html" %}
-{% block title %}Admin{% endblock %}
-{% block content %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Panel Admin</h1>
+    <a href="{{ url_for('logout') }}">Cerrar sesión</a>
 
-{% if not session.get('_user_id') %}
-<h2>Login Admin</h2>
-<form method="POST">
-    <div class="mb-3">
-        <label>Usuario</label>
-        <input type="text" class="form-control" name="usuario" required>
-    </div>
-    <div class="mb-3">
-        <label>Contraseña</label>
-        <input type="password" class="form-control" name="password" required>
-    </div>
-    <button type="submit" class="btn btn-primary">Entrar</button>
-</form>
-{% else %}
-<h2>Dashboard Admin</h2>
-
-<h3>Registros</h3>
-<table class="table table-striped">
-    <thead>
+    <h2>Registros</h2>
+    <table border="1">
         <tr>
             <th>Nombre</th>
             <th>Teléfono</th>
             <th>Fecha</th>
-            <th>Entrada</th>
-            <th>Salida</th>
-            <th>Extra coche (€)</th>
+            <th>Hora Entrada</th>
+            <th>Hora Salida</th>
+            <th>Coche</th>
+            <th>Extra (€)</th>
         </tr>
-    </thead>
-    <tbody>
         {% for r in registros %}
         <tr>
             <td>{{ r['nombre'] }}</td>
@@ -38,38 +27,28 @@
             <td>{{ r['fecha'] }}</td>
             <td>{{ r['hora_entrada'] }}</td>
             <td>{{ r['hora_salida'] }}</td>
+            <td>{{ 'SI' if r['coche'] else 'NO' }}</td>
             <td>{{ r['extra_coche'] }}</td>
         </tr>
         {% endfor %}
-    </tbody>
-</table>
+    </table>
 
-<h3>Nóminas</h3>
-<table class="table table-bordered">
-    <thead>
+    <h2>Nóminas</h2>
+    <table border="1">
         <tr>
             <th>Nombre</th>
-            <th>Año</th>
-            <th>Mes</th>
-            <th>Horas trabajadas</th>
-            <th>Extra coche (€)</th>
-            <th>Total (€)</th>
+            <th>Días Trabajados</th>
+            <th>Total Horas</th>
+            <th>Total Extra (€)</th>
         </tr>
-    </thead>
-    <tbody>
         {% for n in nominas %}
         <tr>
             <td>{{ n['nombre'] }}</td>
-            <td>{{ n['año'] }}</td>
-            <td>{{ n['mes'] }}</td>
-            <td>{{ "%.2f"|format(n['horas']) }}</td>
-            <td>{{ n['extra'] }}</td>
-            <td>{{ "%.2f"|format(n['horas']*9 + n['extra']) }}</td>
+            <td>{{ n['dias_trabajados'] }}</td>
+            <td>{{ "%.2f"|format(n['total_horas']) }}</td>
+            <td>{{ "%.2f"|format(n['total_extra']) }}</td>
         </tr>
         {% endfor %}
-    </tbody>
-</table>
-
-{% endif %}
-
-{% endblock %}
+    </table>
+</body>
+</html>

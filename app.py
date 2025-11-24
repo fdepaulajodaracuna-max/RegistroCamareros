@@ -1,24 +1,22 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin
 import sqlite3
 from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin
 from twilio.rest import Client
-from dotenv import load_dotenv
 
-# Cargar variables de entorno
-load_dotenv()
-
+# ----------------- CONFIGURACIÓN -----------------
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
+app.secret_key = os.environ.get("SECRET_KEY", "clave_por_defecto")
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "admin_login"
 
 DATABASE = "trevian_app.db"
+PRECIO_COCHE = 5  # euros extra si camarero puso coche
 
-# ----------------- MODELO USER ADMIN -----------------
+# ----------------- MODELO ADMIN -----------------
 class Admin(UserMixin):
     def __init__(self, id):
         self.id = id
@@ -31,28 +29,26 @@ def load_user(user_id):
 def init_db():
     conn = sqlite3.connect(DATABASE)
     c = conn.cursor()
-    # Tabla camareros
     c.execute('''CREATE TABLE IF NOT EXISTS camareros (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT,
                     telefono TEXT
                 )''')
-    # Tabla registros
     c.execute('''CREATE TABLE IF NOT EXISTS registros (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     camarero_id INTEGER,
                     fecha TEXT,
                     hora_entrada TEXT,
                     hora_salida TEXT,
+                    coche INTEGER DEFAULT 0,
                     extra_coche REAL DEFAULT 0
                 )''')
-    # Tabla admin
     c.execute('''CREATE TABLE IF NOT EXISTS admin (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     usuario TEXT,
                     password TEXT
                 )''')
-    # Crear usuario admin por defecto si no existe
+    # Usuario admin por defecto
     c.execute("SELECT * FROM admin WHERE usuario='admin'")
     if not c.fetchone():
         c.execute("INSERT INTO admin (usuario, password) VALUES (?, ?)", ('admin', '1234'))
@@ -63,15 +59,24 @@ init_db()
 
 # ----------------- FUNCIONES -----------------
 def send_whatsapp(to, message):
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_whatsapp = os.environ.get("TWILIO_WHATSAPP_FROM")
+    if not account_sid or not auth_token or not from_whatsapp:
+        print("Twilio no configurado correctamente.")
+        return
     client = Client(account_sid, auth_token)
-    client.messages.create(
-        body=message,
-        from_=from_whatsapp,
-        to=f'whatsapp:{to}'
-    )
+    if not to.startswith("+"):
+        to = f"+{to}"
+    try:
+        msg = client.messages.create(
+            body=message,
+            from_=from_whatsapp,
+            to=f"whatsapp:{to}"
+        )
+        print("Mensaje enviado:", msg.sid)
+    except Exception as e:
+        print("Error Twilio:", e)
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE)
@@ -84,12 +89,13 @@ def index():
     if request.method == "POST":
         nombre = request.form['nombre']
         telefono = request.form['telefono']
+        fecha = request.form['fecha']
         hora_entrada = request.form['hora_entrada']
         hora_salida = request.form['hora_salida']
-        fecha = datetime.now().strftime("%Y-%m-%d")
+        coche = int(request.form.get('coche', 0))
+        extra_coche = PRECIO_COCHE if coche else 0
 
         conn = get_db_connection()
-        # Verificar si camarero existe
         c = conn.cursor()
         c.execute("SELECT id FROM camareros WHERE nombre=? AND telefono=?", (nombre, telefono))
         res = c.fetchone()
@@ -100,31 +106,25 @@ def index():
             camarero_id = c.lastrowid
             conn.commit()
 
-        # Verificar si ya registró hoy
         c.execute("SELECT * FROM registros WHERE camarero_id=? AND fecha=?", (camarero_id, fecha))
         if c.fetchone():
-            flash("Ya has registrado tu jornada hoy.", "danger")
+            flash("Ya has registrado tu jornada ese día.", "danger")
             conn.close()
             return redirect(url_for("index"))
 
-        # Insertar registro
-        c.execute("INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida) VALUES (?, ?, ?, ?)",
-                  (camarero_id, fecha, hora_entrada, hora_salida))
+        c.execute("INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche) VALUES (?, ?, ?, ?, ?, ?)",
+                  (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche))
         conn.commit()
         conn.close()
 
         # Enviar WhatsApp
-        try:
-            send_whatsapp(telefono, f"Hola {nombre}, tu registro de entrada ({hora_entrada}) y salida ({hora_salida}) ha sido guardado.")
-        except Exception as e:
-            print("Error Twilio:", e)
+        send_whatsapp(telefono, f"Hola {nombre}, tu registro de {fecha} ({hora_entrada} - {hora_salida}) ha sido guardado. Extra coche: {extra_coche}€")
 
         flash("Registro guardado correctamente.", "success")
         return redirect(url_for("index"))
 
     return render_template("index.html")
 
-# ----------------- LOGIN ADMIN -----------------
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
@@ -149,13 +149,30 @@ def admin_login():
 def admin_dashboard():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''SELECT r.id, c.nombre, c.telefono, r.fecha, r.hora_entrada, r.hora_salida, r.extra_coche 
-                 FROM registros r 
+    c.execute('''SELECT r.id, c.nombre, c.telefono, r.fecha, r.hora_entrada, r.hora_salida, r.coche, r.extra_coche
+                 FROM registros r
                  JOIN camareros c ON r.camarero_id = c.id
                  ORDER BY r.fecha DESC''')
     registros = c.fetchall()
     conn.close()
     return render_template("admin.html", registros=registros)
+
+@app.route("/admin/nominas")
+@login_required
+def nominas():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''SELECT c.nombre,
+                        SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS total_horas,
+                        SUM(r.extra_coche) AS total_extra,
+                        COUNT(r.id) AS dias_trabajados
+                 FROM registros r
+                 JOIN camareros c ON r.camarero_id=c.id
+                 GROUP BY c.nombre
+                 ORDER BY c.nombre''')
+    nominas = c.fetchall()
+    conn.close()
+    return render_template("admin.html", nominas=nominas)
 
 @app.route("/logout")
 @login_required
@@ -163,25 +180,7 @@ def logout():
     logout_user()
     return redirect(url_for("admin_login"))
 
-# ----------------- NÓMINAS -----------------
-@app.route("/admin/nominas")
-@login_required
-def nominas():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('''SELECT c.nombre, strftime('%Y', r.fecha) AS año, strftime('%m', r.fecha) AS mes,
-                        SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS horas,
-                        SUM(r.extra_coche) AS extra
-                 FROM registros r
-                 JOIN camareros c ON r.camarero_id=c.id
-                 GROUP BY c.nombre, año, mes
-                 ORDER BY año DESC, mes DESC''')
-    datos = c.fetchall()
-    conn.close()
-    return render_template("admin.html", nominas=datos)
-
 # ----------------- RUN APP -----------------
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))  # usa el puerto de Render o 5000 local
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
