@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block title %}Registro Camarero{% endblock %}
+{% block content %}
+<h2>Registro Camarero</h2>
+<form method="POST">
+    <div class="mb-3">
+        <label>Nombre</label>
+        <input type="text" class="form-control" name="nombre" required>
+    </div>
+    <div class="mb-3">
+        <label>Teléfono (+34xxxxxxx)</label>
+        <input type="text" class="form-control" name="telefono" required>
+    </div>
+    <div class="mb-3">
+        <label>Hora de entrada (HH:MM)</label>
+        <input type="time" class="form-control" name="hora_entrada" required>
+    </div>
+    <div class="mb-3">
+        <label>Hora de salida (HH:MM)</label>
+        <input type="time" class="form-control" name="hora_salida" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Registrar</button>
+</form>
+{% endblock %}

@@ -1,23 +1,75 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Panel Admin</title>
-</head>
-<body>
-  <h2>Registros de Horas</h2>
-  <table border="1">
-    <tr>
-      <th>Nombre</th>
-      <th>Entrada</th>
-      <th>Salida</th>
-    </tr>
-    {% for registro in registros %}
-    <tr>
-      <td>{{ registro.nombre }}</td>
-      <td>{{ registro.entrada }}</td>
-      <td>{{ registro.salida }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</body>
-</html>
+{% extends "layout.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+
+{% if not session.get('_user_id') %}
+<h2>Login Admin</h2>
+<form method="POST">
+    <div class="mb-3">
+        <label>Usuario</label>
+        <input type="text" class="form-control" name="usuario" required>
+    </div>
+    <div class="mb-3">
+        <label>Contraseña</label>
+        <input type="password" class="form-control" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Entrar</button>
+</form>
+{% else %}
+<h2>Dashboard Admin</h2>
+
+<h3>Registros</h3>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Fecha</th>
+            <th>Entrada</th>
+            <th>Salida</th>
+            <th>Extra coche (€)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in registros %}
+        <tr>
+            <td>{{ r['nombre'] }}</td>
+            <td>{{ r['telefono'] }}</td>
+            <td>{{ r['fecha'] }}</td>
+            <td>{{ r['hora_entrada'] }}</td>
+            <td>{{ r['hora_salida'] }}</td>
+            <td>{{ r['extra_coche'] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h3>Nóminas</h3>
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Nombre</th>
+            <th>Año</th>
+            <th>Mes</th>
+            <th>Horas trabajadas</th>
+            <th>Extra coche (€)</th>
+            <th>Total (€)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for n in nominas %}
+        <tr>
+            <td>{{ n['nombre'] }}</td>
+            <td>{{ n['año'] }}</td>
+            <td>{{ n['mes'] }}</td>
+            <td>{{ "%.2f"|format(n['horas']) }}</td>
+            <td>{{ n['extra'] }}</td>
+            <td>{{ "%.2f"|format(n['horas']*9 + n['extra']) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endif %}
+
+{% endblock %}

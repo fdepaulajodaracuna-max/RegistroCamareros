@@ -1,107 +1,185 @@
-from flask import Flask, request, redirect, url_for, render_template_string, session
-from flask_sqlalchemy import SQLAlchemy
+import os
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin
+import sqlite3
+from datetime import datetime
 from twilio.rest import Client
 from dotenv import load_dotenv
-import os
-from datetime import datetime
 
+# Cargar variables de entorno
 load_dotenv()
 
-# Configuración Twilio
-TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-TWILIO_WHATSAPP_FROM = os.getenv('TWILIO_WHATSAPP_FROM')
-client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
-# Admin
-ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
-
-# Flask
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///camareros.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.urandom(24)
-db = SQLAlchemy(app)
+app.secret_key = os.getenv("SECRET_KEY")
 
-# Modelo de camarero
-class Registro(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50), nullable=False)
-    entrada = db.Column(db.String(10), nullable=False)
-    salida = db.Column(db.String(10), nullable=False)
-    fecha = db.Column(db.String(10), nullable=False)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "admin_login"
 
-db.create_all()
+DATABASE = "trevian_app.db"
 
-# Pantalla de registro para camareros
+# ----------------- MODELO USER ADMIN -----------------
+class Admin(UserMixin):
+    def __init__(self, id):
+        self.id = id
+
+@login_manager.user_loader
+def load_user(user_id):
+    return Admin(user_id)
+
+# ----------------- BASE DE DATOS -----------------
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    # Tabla camareros
+    c.execute('''CREATE TABLE IF NOT EXISTS camareros (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT,
+                    telefono TEXT
+                )''')
+    # Tabla registros
+    c.execute('''CREATE TABLE IF NOT EXISTS registros (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camarero_id INTEGER,
+                    fecha TEXT,
+                    hora_entrada TEXT,
+                    hora_salida TEXT,
+                    extra_coche REAL DEFAULT 0
+                )''')
+    # Tabla admin
+    c.execute('''CREATE TABLE IF NOT EXISTS admin (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    usuario TEXT,
+                    password TEXT
+                )''')
+    # Crear usuario admin por defecto si no existe
+    c.execute("SELECT * FROM admin WHERE usuario='admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO admin (usuario, password) VALUES (?, ?)", ('admin', '1234'))
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ----------------- FUNCIONES -----------------
+def send_whatsapp(to, message):
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
+    client = Client(account_sid, auth_token)
+    client.messages.create(
+        body=message,
+        from_=from_whatsapp,
+        to=f'whatsapp:{to}'
+    )
+
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# ----------------- RUTAS -----------------
 @app.route("/", methods=["GET", "POST"])
-def registro():
+def index():
     if request.method == "POST":
         nombre = request.form['nombre']
-        entrada = request.form['entrada']
-        salida = request.form['salida']
+        telefono = request.form['telefono']
+        hora_entrada = request.form['hora_entrada']
+        hora_salida = request.form['hora_salida']
         fecha = datetime.now().strftime("%Y-%m-%d")
 
-        # Verificar que no haya registrado hoy
-        if Registro.query.filter_by(nombre=nombre, fecha=fecha).first():
-            return "Ya has registrado tus horas hoy."
+        conn = get_db_connection()
+        # Verificar si camarero existe
+        c = conn.cursor()
+        c.execute("SELECT id FROM camareros WHERE nombre=? AND telefono=?", (nombre, telefono))
+        res = c.fetchone()
+        if res:
+            camarero_id = res[0]
+        else:
+            c.execute("INSERT INTO camareros (nombre, telefono) VALUES (?, ?)", (nombre, telefono))
+            camarero_id = c.lastrowid
+            conn.commit()
 
-        nuevo = Registro(nombre=nombre, entrada=entrada, salida=salida, fecha=fecha)
-        db.session.add(nuevo)
-        db.session.commit()
+        # Verificar si ya registró hoy
+        c.execute("SELECT * FROM registros WHERE camarero_id=? AND fecha=?", (camarero_id, fecha))
+        if c.fetchone():
+            flash("Ya has registrado tu jornada hoy.", "danger")
+            conn.close()
+            return redirect(url_for("index"))
+
+        # Insertar registro
+        c.execute("INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida) VALUES (?, ?, ?, ?)",
+                  (camarero_id, fecha, hora_entrada, hora_salida))
+        conn.commit()
+        conn.close()
 
         # Enviar WhatsApp
         try:
-            client.messages.create(
-                from_=TWILIO_WHATSAPP_FROM,
-                body=f"{nombre} registró entrada: {entrada}, salida: {salida} el {fecha}",
-                to="whatsapp:+34631592283"
-            )
+            send_whatsapp(telefono, f"Hola {nombre}, tu registro de entrada ({hora_entrada}) y salida ({hora_salida}) ha sido guardado.")
         except Exception as e:
-            print(f"Error notificando: {e}")
+            print("Error Twilio:", e)
 
-        return "Registro guardado correctamente."
-    
-    return render_template_string("""
-    <h2>Registro de horas</h2>
-    <form method="post">
-        Nombre: <input type="text" name="nombre" required><br>
-        Hora de entrada (HH:MM): <input type="text" name="entrada" required><br>
-        Hora de salida (HH:MM): <input type="text" name="salida" required><br>
-        <input type="submit" value="Registrar">
-    </form>
-    """)
+        flash("Registro guardado correctamente.", "success")
+        return redirect(url_for("index"))
 
-# Panel de admin
+    return render_template("index.html")
+
+# ----------------- LOGIN ADMIN -----------------
 @app.route("/admin", methods=["GET", "POST"])
-def admin():
+def admin_login():
     if request.method == "POST":
+        usuario = request.form['usuario']
         password = request.form['password']
-        if password == ADMIN_PASSWORD:
-            session['admin'] = True
-            return redirect(url_for("panel"))
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM admin WHERE usuario=? AND password=?", (usuario, password))
+        res = c.fetchone()
+        conn.close()
+        if res:
+            admin = Admin(res[0])
+            login_user(admin)
+            return redirect(url_for("admin_dashboard"))
         else:
-            return "Contraseña incorrecta"
+            flash("Usuario o contraseña incorrectos", "danger")
+            return redirect(url_for("admin_login"))
+    return render_template("admin.html")
 
-    return render_template_string("""
-    <h2>Login Admin</h2>
-    <form method="post">
-        Contraseña: <input type="password" name="password" required><br>
-        <input type="submit" value="Entrar">
-    </form>
-    """)
+@app.route("/admin/dashboard")
+@login_required
+def admin_dashboard():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''SELECT r.id, c.nombre, c.telefono, r.fecha, r.hora_entrada, r.hora_salida, r.extra_coche 
+                 FROM registros r 
+                 JOIN camareros c ON r.camarero_id = c.id
+                 ORDER BY r.fecha DESC''')
+    registros = c.fetchall()
+    conn.close()
+    return render_template("admin.html", registros=registros)
 
-@app.route("/panel")
-def panel():
-    if not session.get('admin'):
-        return redirect(url_for("admin"))
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("admin_login"))
 
-    registros = Registro.query.all()
-    html = "<h2>Panel Admin</h2><table border=1><tr><th>Nombre</th><th>Entrada</th><th>Salida</th><th>Fecha</th></tr>"
-    for r in registros:
-        html += f"<tr><td>{r.nombre}</td><td>{r.entrada}</td><td>{r.salida}</td><td>{r.fecha}</td></tr>"
-    html += "</table>"
-    return html
+# ----------------- NÓMINAS -----------------
+@app.route("/admin/nominas")
+@login_required
+def nominas():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''SELECT c.nombre, strftime('%Y', r.fecha) AS año, strftime('%m', r.fecha) AS mes,
+                        SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS horas,
+                        SUM(r.extra_coche) AS extra
+                 FROM registros r
+                 JOIN camareros c ON r.camarero_id=c.id
+                 GROUP BY c.nombre, año, mes
+                 ORDER BY año DESC, mes DESC''')
+    datos = c.fetchall()
+    conn.close()
+    return render_template("admin.html", nominas=datos)
 
+# ----------------- RUN APP -----------------
 if __name__ == "__main__":
     app.run(debug=True)
