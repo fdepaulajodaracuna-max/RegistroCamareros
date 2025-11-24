@@ -1,48 +1,35 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <title>Registro Camareros</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <title>Registro Camareros</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="bg-light">
-<div class="container py-5">
-  <h1 class="text-center text-primary mb-4">Registro de Jornada</h1>
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{category}}">{{ message }}</div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
+<body>
 
-  <form method="POST" class="card p-4 shadow bg-white">
-    <div class="mb-3">
-      <label>Nombre</label>
-      <input type="text" class="form-control" name="nombre" required>
-    </div>
-    <div class="mb-3">
-      <label>Teléfono</label>
-      <input type="text" class="form-control" name="telefono" required>
-    </div>
-    <div class="mb-3">
-      <label>Fecha</label>
-      <input type="date" class="form-control" name="fecha" required>
-    </div>
-    <div class="mb-3">
-      <label>Hora entrada</label>
-      <input type="time" class="form-control" name="hora_entrada" required>
-    </div>
-    <div class="mb-3">
-      <label>Hora salida</label>
-      <input type="time" class="form-control" name="hora_salida" required>
-    </div>
-    <div class="form-check mb-3">
-      <input class="form-check-input" type="checkbox" name="coche">
-      <label class="form-check-label">Ha usado coche</label>
-    </div>
-    <button type="submit" class="btn btn-primary">Registrar</button>
-  </form>
+<div class="card">
+    <h2>Registro de Camareros</h2>
+
+    <form method="POST">
+
+        <label>Nombre</label>
+        <input type="text" name="nombre" required>
+
+        <label>Fecha</label>
+        <input type="date" name="fecha" required>
+
+        <label>Hora Inicio</label>
+        <input type="time" name="hora_inicio" required>
+
+        <label>Hora Fin</label>
+        <input type="time" name="hora_fin" required>
+
+        <label>€ Coche (día)</label>
+        <input type="number" step="0.1" name="coche" placeholder="0">
+
+        <button type="submit">Guardar</button>
+    </form>
 </div>
+
 </body>
 </html>
