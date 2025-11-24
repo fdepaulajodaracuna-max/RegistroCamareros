@@ -1,33 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Panel Admin</title>
+  <meta charset="utf-8">
+  <title>Panel Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
-    <h1>Registros</h1>
-    <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
-    <table border="1">
-        <tr>
-            <th>Nombre</th>
-            <th>Teléfono</th>
-            <th>Fecha</th>
-            <th>Entrada</th>
-            <th>Salida</th>
-            <th>Coche</th>
-            <th>Extra coche</th>
-        </tr>
-        {% for r in registros %}
-        <tr>
-            <td>{{ r.nombre }}</td>
-            <td>{{ r.telefono }}</td>
-            <td>{{ r.fecha }}</td>
-            <td>{{ r.hora_entrada }}</td>
-            <td>{{ r.hora_salida }}</td>
-            <td>{{ 'Sí' if r.coche else 'No' }}</td>
-            <td>{{ r.extra_coche }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+<body class="bg-light">
+<div class="container py-5">
+  <h1 class="text-center text-success mb-4">Panel Administrador</h1>
+  <a href="{{ url_for('logout') }}" class="btn btn-secondary mb-3">Cerrar sesión</a>
+
+  <form method="POST" action="{{ url_for('set_precio_coche') }}" class="mb-4">
+    <label>Precio coche por día (€)</label>
+    <input type="number" name="precio_coche" step="0.01" value="{{ precio_coche }}" class="form-control w-25 d-inline-block">
+    <button type="submit" class="btn btn-primary">Actualizar</button>
+  </form>
+
+  <h3>Registros de camareros</h3>
+  <table class="table table-striped shadow bg-white">
+    <thead class="table-dark">
+      <tr>
+        <th>Nombre</th>
+        <th>Teléfono</th>
+        <th>Fecha</th>
+        <th>Entrada</th>
+        <th>Salida</th>
+        <th>Coche</th>
+        <th>Extra (€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in registros %}
+      <tr>
+        <td>{{ r.nombre }}</td>
+        <td>{{ r.telefono }}</td>
+        <td>{{ r.fecha }}</td>
+        <td>{{ r.hora_entrada }}</td>
+        <td>{{ r.hora_salida }}</td>
+        <td>{{ 'Sí' if r.coche else 'No' }}</td>
+        <td>{{ r.extra_coche }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <a href="{{ url_for('nominas') }}" class="btn btn-success mt-3">Ver Nóminas</a>
+</div>
 </body>
 </html>
