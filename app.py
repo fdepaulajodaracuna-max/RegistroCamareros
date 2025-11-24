@@ -1,6 +1,6 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin, current_user
+from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin
 import sqlite3
 from datetime import datetime
 from twilio.rest import Client
@@ -64,15 +64,15 @@ init_db()
 
 # ----------------- FUNCIONES -----------------
 def send_whatsapp(to, message):
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
+    client = Client(account_sid, auth_token)
     try:
-        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-        from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
-        client = Client(account_sid, auth_token)
         client.messages.create(
             body=message,
-            from_=from_whatsapp,
-            to=f'whatsapp:{to}'
+            from_=f"whatsapp:{from_whatsapp}",
+            to=f"whatsapp:{to}"
         )
     except Exception as e:
         print("Error Twilio:", e)
@@ -85,13 +85,13 @@ def get_db_connection():
 # ----------------- RUTAS -----------------
 @app.route("/", methods=["GET", "POST"])
 def index():
-    hoy = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime('%Y-%m-%d')
     if request.method == "POST":
         nombre = request.form['nombre']
         telefono = request.form['telefono']
-        fecha = request.form['fecha']
         hora_entrada = request.form['hora_entrada']
         hora_salida = request.form['hora_salida']
+        fecha = request.form['fecha']
         coche = request.form.get('coche', 'No')
         extra_coche = float(request.form.get('extra_coche', 0))
 
@@ -107,7 +107,7 @@ def index():
             camarero_id = c.lastrowid
             conn.commit()
 
-        # Verificar si ya registró hoy
+        # Verificar si ya registró ese día
         c.execute("SELECT * FROM registros WHERE camarero_id=? AND fecha=?", (camarero_id, fecha))
         if c.fetchone():
             flash("Ya has registrado tu jornada ese día.", "danger")
@@ -115,27 +115,29 @@ def index():
             return redirect(url_for("index"))
 
         # Insertar registro
-        c.execute(
-            "INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche) VALUES (?, ?, ?, ?, ?, ?)",
-            (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche)
-        )
+        c.execute("""INSERT INTO registros 
+                     (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche)
+                     VALUES (?, ?, ?, ?, ?, ?)""",
+                  (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche))
         conn.commit()
         conn.close()
 
-        # Enviar WhatsApp
-        send_whatsapp(telefono, f"Hola {nombre}, tu registro del {fecha} ({hora_entrada}-{hora_salida}) ha sido guardado. Coche: {coche}, Extra: {extra_coche}€")
+        # Enviar WhatsApp al camarero
+        send_whatsapp(telefono, f"Hola {nombre}, tu registro del {fecha} ha sido guardado.\nEntrada: {hora_entrada}\nSalida: {hora_salida}\nCoche: {coche}")
+
+        # Enviar WhatsApp al administrador
+        admin_num = os.getenv("ADMIN_WHATSAPP")
+        if admin_num:
+            send_whatsapp(admin_num, f"{nombre} ha registrado su jornada.\nFecha: {fecha}\nEntrada: {hora_entrada}\nSalida: {hora_salida}\nCoche: {coche}")
 
         flash("Registro guardado correctamente.", "success")
         return redirect(url_for("index"))
 
-    return render_template("index.html", hoy=hoy)
+    return render_template("index.html", today=today)
 
 # ----------------- LOGIN ADMIN -----------------
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
-    if current_user.is_authenticated:
-        return redirect(url_for("admin_dashboard"))
-
     if request.method == "POST":
         usuario = request.form['usuario']
         password = request.form['password']
@@ -178,15 +180,13 @@ def logout():
 def nominas():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''
-        SELECT c.nombre, strftime('%Y', r.fecha) AS año, strftime('%m', r.fecha) AS mes,
-               SUM((julianday(r.hora_salida) - julianday(r.hora_entrada)) * 24) AS horas,
-               SUM(r.extra_coche) AS extra
-        FROM registros r
-        JOIN camareros c ON r.camarero_id = c.id
-        GROUP BY c.nombre, año, mes
-        ORDER BY año DESC, mes DESC
-    ''')
+    c.execute('''SELECT c.nombre, 
+                        SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS horas,
+                        SUM(r.extra_coche) AS total_extra
+                 FROM registros r
+                 JOIN camareros c ON r.camarero_id=c.id
+                 GROUP BY c.nombre
+                 ORDER BY c.nombre''')
     datos = c.fetchall()
     conn.close()
     return render_template("nominas.html", nominas=datos)
