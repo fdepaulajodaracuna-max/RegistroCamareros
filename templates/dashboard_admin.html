@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Admin</title>
+</head>
+<body>
+
+<h1>Panel Admin</h1>
+
+<table border="1">
+    <tr>
+        <th>ID</th>
+        <th>Camarero</th>
+        <th>Entrada</th>
+        <th>Salida</th>
+        <th>Coche</th>
+        <th>Pago coche</th>
+    </tr>
+
+    {% for f in fichajes %}
+    <tr>
+        <td>{{ f[0] }}</td>
+        <td>{{ f[1] }}</td>
+        <td>{{ f[2] }}</td>
+        <td>{{ f[3] }}</td>
+        <td>{{ "Sí" if f[4] else "No" }}</td>
+        <td>{{ f[5] }} €</td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>
