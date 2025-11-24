@@ -1,25 +1,59 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Registro Camareros</title>
+<meta charset="UTF-8">
+<title>Registro de Camareros</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background-color: #f2f7ff; font-family: 'Segoe UI', sans-serif; }
+.card { border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-top: 30px; }
+h1 { color: #0d6efd; margin-bottom: 20px; }
+.btn-primary { background-color: #0d6efd; border: none; }
+.btn-primary:hover { background-color: #0b5ed7; }
+</style>
 </head>
 <body>
-    <h1>Registro de Jornada</h1>
-    <form method="POST">
-        <label>Nombre:</label>
-        <input type="text" name="nombre" required><br>
-        <label>Teléfono:</label>
-        <input type="text" name="telefono" required><br>
-        <label>Fecha:</label>
-        <input type="date" name="fecha" required><br>
-        <label>Hora Entrada:</label>
-        <input type="time" name="hora_entrada" required><br>
-        <label>Hora Salida:</label>
-        <input type="time" name="hora_salida" required><br>
-        <label>¿Coche?:</label>
-        <input type="checkbox" name="coche"><br>
-        <button type="submit">Registrar</button>
-    </form>
+<div class="container">
+    <div class="card p-4">
+        <h1 class="text-center">Registro de Camareros</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{category}}">{{message}}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <form method="POST">
+            <div class="mb-3">
+                <label>Nombre</label>
+                <input type="text" name="nombre" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Teléfono</label>
+                <input type="text" name="telefono" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Fecha de trabajo</label>
+                <input type="date" name="fecha" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Hora entrada</label>
+                <input type="time" name="hora_entrada" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Hora salida</label>
+                <input type="time" name="hora_salida" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>¿Puso coche?</label>
+                <select name="coche" class="form-control">
+                    <option value="No" selected>No</option>
+                    <option value="Si">Sí</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Registrar</button>
+        </form>
+    </div>
+</div>
 </body>
 </html>

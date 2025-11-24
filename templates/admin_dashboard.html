@@ -1,49 +1,47 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <title>Admin Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background-color: #f2f7ff; font-family: 'Segoe UI', sans-serif; }
+.table { background-color: #fff; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+h2 { color: #0d6efd; margin-top: 20px; }
+.btn-primary { background-color: #0d6efd; border: none; }
+.btn-primary:hover { background-color: #0b5ed7; }
+</style>
 </head>
-<body class="bg-light text-dark">
-<div class="container py-5">
-<h1>Registros</h1>
-<a href="{{ url_for('logout') }}" class="btn btn-danger mb-3">Cerrar sesión</a>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{category}}">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
-<table class="table table-striped">
-<tr>
-<th>Nombre</th><th>Teléfono</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Coche</th><th>Extra (€)</th><th>Acción</th>
-</tr>
-{% for reg in registros %}
-<tr>
-<td>{{ reg.nombre }}</td>
-<td>{{ reg.telefono }}</td>
-<td>{{ reg.fecha }}</td>
-<td>{{ reg.hora_entrada }}</td>
-<td>{{ reg.hora_salida }}</td>
-<td>
-<form method="POST" action="{{ url_for('update_extra', registro_id=reg.id) }}">
-<select name="coche" class="form-select">
-    <option value="No" {% if reg.coche=='No' %}selected{% endif %}>No</option>
-    <option value="Sí" {% if reg.coche=='Sí' %}selected{% endif %}>Sí</option>
-</select>
-</td>
-<td><input type="number" step="0.01" name="extra_coche" value="{{ reg.extra_coche }}" class="form-control"></td>
-<td><button type="submit" class="btn btn-success btn-sm">Guardar</button></td>
-</form>
-</tr>
-{% endfor %}
-</table>
-
-<a href="{{ url_for('nominas') }}" class="btn btn-primary mt-3">Ver nóminas</a>
+<body>
+<div class="container mt-4">
+    <h2>Registros de Camareros</h2>
+    <a href="{{ url_for('logout') }}" class="btn btn-danger mb-3">Cerrar Sesión</a>
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Fecha</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>Coche</th>
+                <th>Extra Coche (€)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in registros %}
+            <tr>
+                <td>{{ r.nombre }}</td>
+                <td>{{ r.telefono }}</td>
+                <td>{{ r.fecha }}</td>
+                <td>{{ r.hora_entrada }}</td>
+                <td>{{ r.hora_salida }}</td>
+                <td>{{ r.coche }}</td>
+                <td>{{ r.extra_coche }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 </body>
 </html>
