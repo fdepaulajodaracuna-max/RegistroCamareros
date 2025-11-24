@@ -1,33 +1,32 @@
-<!DOCTYPE html>
-<html>
-<head>
-<title>Admin</title>
-</head>
-<body>
-
-<h1>Panel Admin</h1>
-
-<table border="1">
-    <tr>
-        <th>ID</th>
-        <th>Camarero</th>
-        <th>Entrada</th>
-        <th>Salida</th>
-        <th>Coche</th>
-        <th>Pago coche</th>
-    </tr>
-
-    {% for f in fichajes %}
-    <tr>
-        <td>{{ f[0] }}</td>
-        <td>{{ f[1] }}</td>
-        <td>{{ f[2] }}</td>
-        <td>{{ f[3] }}</td>
-        <td>{{ "Sí" if f[4] else "No" }}</td>
-        <td>{{ f[5] }} €</td>
-    </tr>
-    {% endfor %}
+{% extends "layout.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h2>Registros de Camareros</h2>
+<a href="{{ url_for('admin_logout') }}" class="btn btn-danger mb-3">Cerrar Sesión</a>
+<table class="table table-striped shadow-sm">
+<thead class="table-dark">
+<tr>
+    <th>Nombre</th>
+    <th>Fecha</th>
+    <th>Entrada</th>
+    <th>Salida</th>
+    <th>Coche</th>
+    <th>Extra coche (€)</th>
+    <th>Total (€)</th>
+</tr>
+</thead>
+<tbody>
+{% for r in registros %}
+<tr>
+    <td>{{ r[1] }}</td>
+    <td>{{ r[2] }}</td>
+    <td>{{ r[3] }}</td>
+    <td>{{ r[4] }}</td>
+    <td>{{ 'Sí' if r[5] else 'No' }}</td>
+    <td>{{ r[6] }}</td>
+    <td>{{ (( ( (r[4]|safe).split(':')[0]|int - (r[3]|safe).split(':')[0]|int ) * tarifa) + r[6]) }}</td>
+</tr>
+{% endfor %}
+</tbody>
 </table>
-
-</body>
-</html>
+{% endblock %}

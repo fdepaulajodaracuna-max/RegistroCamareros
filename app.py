@@ -1,182 +1,180 @@
-from flask import Flask, render_template, request, redirect, session, url_for
+import os
 import sqlite3
-from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin, current_user
+from twilio.rest import Client
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.environ.get("SECRET_KEY", "dev_secret")
 
-# ---------------------------
-# INIT DB
-# ---------------------------
+# Configuración Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "camarero_login"
+
+DB_NAME = "trevian_app.db"
+HORA_PRECIO = 9  # 9€ por hora
+
+# Twilio
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM")
+ADMIN_WHATSAPP_TO = os.environ.get("ADMIN_WHATSAPP_TO")  # Pon tu número en Render
+
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+# --- DB setup ---
 def init_db():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-
-    # Tabla de camareros
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS camareros (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT,
-        telefono TEXT UNIQUE,
-        password TEXT,
-        creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # Entradas/salidas
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS fichajes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        camarero_id INTEGER,
-        hora_entrada TEXT,
-        hora_salida TEXT,
-        coche INTEGER DEFAULT 0,
-        pago_coche INTEGER DEFAULT 0,
-        FOREIGN KEY(camarero_id) REFERENCES camareros(id)
-    )
-    """)
-
+    # Camareros
+    c.execute("""CREATE TABLE IF NOT EXISTS camareros (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 nombre TEXT NOT NULL,
+                 telefono TEXT UNIQUE NOT NULL
+                 )""")
+    # Registros de fichaje
+    c.execute("""CREATE TABLE IF NOT EXISTS registros (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 camarero_id INTEGER,
+                 fecha TEXT,
+                 hora_entrada TEXT,
+                 hora_salida TEXT,
+                 coche INTEGER DEFAULT 0,
+                 extra_coche INTEGER DEFAULT 0,
+                 FOREIGN KEY(camarero_id) REFERENCES camareros(id)
+                 )""")
     conn.commit()
     conn.close()
 
 init_db()
 
+# --- User class ---
+class Camarero(UserMixin):
+    def __init__(self, id_, nombre, telefono):
+        self.id = id_
+        self.nombre = nombre
+        self.telefono = telefono
 
-# ---------------------------
-# PAGINA PRINCIPAL
-# ---------------------------
+@login_manager.user_loader
+def load_user(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT * FROM camareros WHERE id=?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return Camarero(row[0], row[1], row[2])
+    return None
+
+# --- Rutas ---
 @app.route("/")
 def index():
     return render_template("index.html")
 
-
-# ---------------------------
-# REGISTRO CAMARERO
-# ---------------------------
-@app.route("/registrar", methods=["GET", "POST"])
-def registrar():
+# Registro y login camarero
+@app.route("/camarero/register", methods=["GET", "POST"])
+def camarero_register():
     if request.method == "POST":
         nombre = request.form["nombre"]
         telefono = request.form["telefono"]
-        password = request.form["password"]
-
-        conn = sqlite3.connect("database.db")
+        conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        c.execute("INSERT INTO camareros (nombre, telefono, password) VALUES (?, ?, ?)",
-                  (nombre, telefono, password))
-        conn.commit()
-        conn.close()
-        return redirect("/login")
+        try:
+            c.execute("INSERT INTO camareros (nombre, telefono) VALUES (?, ?)", (nombre, telefono))
+            conn.commit()
+            flash("Registrado correctamente, ya puedes fichar.")
+            return redirect(url_for("camarero_login"))
+        except sqlite3.IntegrityError:
+            flash("Teléfono ya registrado.")
+        finally:
+            conn.close()
+    return render_template("camarero_register.html")
 
-    return render_template("registrar_camarero.html")
-
-
-# ---------------------------
-# LOGIN CAMARERO
-# ---------------------------
-@app.route("/login", methods=["GET", "POST"])
-def login_camarero():
+@app.route("/camarero/login", methods=["GET", "POST"])
+def camarero_login():
     if request.method == "POST":
         telefono = request.form["telefono"]
-        password = request.form["password"]
-
-        conn = sqlite3.connect("database.db")
+        conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        c.execute("SELECT id, nombre FROM camareros WHERE telefono=? AND password=?",
-                  (telefono, password))
-        user = c.fetchone()
+        c.execute("SELECT * FROM camareros WHERE telefono=?", (telefono,))
+        row = c.fetchone()
         conn.close()
-
-        if user:
-            session["camarero_id"] = user[0]
-            session["camarero_nombre"] = user[1]
-            return redirect("/fichar")
+        if row:
+            user = Camarero(row[0], row[1], row[2])
+            login_user(user)
+            return redirect(url_for("camarero_dashboard"))
         else:
-            return "Datos incorrectos"
+            flash("Teléfono no registrado.")
+    return render_template("camarero_login.html")
 
-    return render_template("login_camarero.html")
-
-
-# ---------------------------
-# FICHAR
-# ---------------------------
-@app.route("/fichar", methods=["GET", "POST"])
-def fichar():
-    if "camarero_id" not in session:
-        return redirect("/login")
-
+@app.route("/camarero/dashboard", methods=["GET", "POST"])
+@login_required
+def camarero_dashboard():
     if request.method == "POST":
-        accion = request.form["accion"]
-        coche = int(request.form["coche"])
-        pago_coche = int(request.form["pago_coche"])
-
-        conn = sqlite3.connect("database.db")
+        fecha = request.form["fecha"]
+        hora_entrada = request.form["hora_entrada"]
+        hora_salida = request.form["hora_salida"]
+        coche = int(request.form.get("coche", 0))
+        extra_coche = int(request.form.get("extra_coche", 0))
+        conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-
-        if accion == "entrada":
-            c.execute("INSERT INTO fichajes (camarero_id, hora_entrada, coche, pago_coche) VALUES (?, ?, ?, ?)",
-                      (session["camarero_id"], datetime.now().strftime("%Y-%m-%d %H:%M:%S"), coche, pago_coche))
-
-        elif accion == "salida":
-            c.execute("""
-                UPDATE fichajes
-                SET hora_salida=?
-                WHERE camarero_id=? AND hora_salida IS NULL
-            """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session["camarero_id"]))
-
+        c.execute("INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche) VALUES (?, ?, ?, ?, ?, ?)",
+                  (current_user.id, fecha, hora_entrada, hora_salida, coche, extra_coche))
         conn.commit()
         conn.close()
+        # Enviar WhatsApp
+        mensaje = f"Camarero: {current_user.nombre}\nFecha: {fecha}\nEntrada: {hora_entrada}\nSalida: {hora_salida}\nCoche: {'Sí' if coche else 'No'}\nExtra coche: {extra_coche}€"
+        try:
+            client.messages.create(
+                body=mensaje,
+                from_=f"whatsapp:{TWILIO_WHATSAPP_FROM}",
+                to=f"whatsapp:{ADMIN_WHATSAPP_TO}"
+            )
+        except Exception as e:
+            print("Error enviando WhatsApp:", e)
+        flash("Fichaje registrado.")
+    return render_template("camarero_dashboard.html")
 
-        return redirect("/fichar")
-
-    return render_template("fichar.html", nombre=session["camarero_nombre"])
-
-
-# ---------------------------
-# ADMIN LOGIN (FIJO)
-# ---------------------------
-@app.route("/admin")
-def admin_login():
-    # Admin fijo
-    session["admin"] = True
-    return redirect("/admin/dashboard")
-
-
-# ---------------------------
-# DASHBOARD ADMIN
-# ---------------------------
-@app.route("/admin/dashboard")
-def dashboard():
-    if "admin" not in session:
-        return redirect("/admin")
-
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-
-    c.execute("""
-    SELECT f.id, c.nombre, f.hora_entrada, f.hora_salida, f.coche, f.pago_coche
-    FROM fichajes f
-    JOIN camareros c ON f.camarero_id = c.id
-    ORDER BY f.id DESC
-    """)
-    fichajes = c.fetchall()
-
-    conn.close()
-    return render_template("dashboard_admin.html", fichajes=fichajes)
-
-
-# ---------------------------
-# LOGOUT CAMARERO
-# ---------------------------
 @app.route("/logout")
+@login_required
 def logout():
-    session.clear()
-    return redirect("/")
+    logout_user()
+    return redirect(url_for("index"))
 
+# --- Admin ---
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-# ---------------------------
-# RUN
-# ---------------------------
+@app.route("/admin", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        password = request.form["password"]
+        if password == ADMIN_PASSWORD:
+            session["admin_logged"] = True
+            return redirect(url_for("admin_dashboard"))
+        else:
+            flash("Contraseña incorrecta.")
+    return render_template("admin_login.html")
+
+@app.route("/admin/dashboard")
+def admin_dashboard():
+    if not session.get("admin_logged"):
+        return redirect(url_for("admin_login"))
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""SELECT r.id, c.nombre, r.fecha, r.hora_entrada, r.hora_salida, r.coche, r.extra_coche 
+                 FROM registros r JOIN camareros c ON r.camarero_id = c.id""")
+    registros = c.fetchall()
+    # Opciones extra coche 0,5,10,...50
+    opciones = list(range(0, 55, 5))
+    conn.close()
+    return render_template("admin_dashboard.html", registros=registros, opciones=opciones, tarifa=HORA_PRECIO)
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("admin_logged", None)
+    return redirect(url_for("admin_login"))
+
 import os
 
 if __name__ == "__main__":

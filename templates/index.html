@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Control Camareros</title>
-</head>
-<body>
-    <h1>Bienvenido</h1>
-    <a href="/login">Iniciar sesión</a>
-    <br>
-    <a href="/registrar">Registrarse</a>
-    <br>
-    <a href="/admin">Admin</a>
-</body>
-</html>
+{% extends "layout.html" %}
+{% block title %}Inicio{% endblock %}
+{% block content %}
+<h1 class="text-primary">Bienvenido a Trevian</h1>
+<a href="{{ url_for('camarero_login') }}" class="btn btn-success m-2">Login Camarero</a>
+<a href="{{ url_for('camarero_register') }}" class="btn btn-info m-2">Registro Camarero</a>
+<a href="{{ url_for('admin_login') }}" class="btn btn-warning m-2">Admin</a>
+{% endblock %}
