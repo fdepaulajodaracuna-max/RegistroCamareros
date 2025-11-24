@@ -1,107 +1,88 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, request, redirect, render_template, session
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
-import os
 from twilio.rest import Client
+import os
 
 app = Flask(__name__)
-app.secret_key = 'tu_clave_secreta'  # Cambia esto
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///trevian.db'
+app.secret_key = 'mi_clave_super_segura'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///registro.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
-# ----------------- MODELOS -----------------
-class Camarero(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), unique=True, nullable=False)
-
+# MODELOS
 class Registro(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    camarero_id = db.Column(db.Integer, db.ForeignKey('camarero.id'))
-    fecha = db.Column(db.Date, nullable=False)
-    entrada = db.Column(db.String(5), nullable=False)  # HH:MM
-    salida = db.Column(db.String(5), nullable=False)
+    nombre = db.Column(db.String(100), nullable=False)
+    entrada = db.Column(db.String(10), nullable=False)
+    salida = db.Column(db.String(10), nullable=False)
 
-class Admin(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(50), unique=True)
-    password = db.Column(db.String(50))
+# CREAR BASE DE DATOS
+with app.app_context():
+    db.create_all()
 
-# ----------------- FUNCIONES -----------------
-def notificar_twilio(nombre, entrada, salida):
-    account_sid = os.environ.get('TWILIO_SID')
-    auth_token = os.environ.get('TWILIO_AUTH')
-    client = Client(account_sid, auth_token)
+# ADMIN (solo tú)
+ADMIN_USERNAME = 'admin'
+ADMIN_PASSWORD = 'paco123'  # cambia esta contraseña si quieres
 
-    message = client.messages.create(
-        from_='whatsapp:+14155238886',
-        body=f'{nombre} registró entrada: {entrada}, salida: {salida}',
-        to='whatsapp:+34TU_NUMERO'  # Cambia a tu número
+# TWILIO
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
+TWILIO_WHATSAPP_FROM = 'whatsapp:+14155238886'
+TWILIO_WHATSAPP_TO = 'whatsapp:+34TU_NUMERO'  # tu número de móvil
+
+def enviar_whatsapp(nombre, entrada, salida):
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+        print(f"{nombre} registró entrada a las {entrada} (Twilio no configurado)")
+        return
+    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    mensaje = f"{nombre} registró entrada: {entrada}, salida: {salida}"
+    client.messages.create(
+        from_=TWILIO_WHATSAPP_FROM,
+        to=TWILIO_WHATSAPP_TO,
+        body=mensaje
     )
-    print("Notificación enviada:", message.sid)
 
-# ----------------- RUTAS -----------------
+# RUTAS
 @app.route('/')
-def index():
-    return redirect(url_for('registrar'))
+def home():
+    return render_template('registro.html')
 
-@app.route('/registrar', methods=['GET', 'POST'])
+@app.route('/registrar', methods=['POST'])
 def registrar():
+    nombre = request.form['nombre']
+    entrada = request.form['entrada']
+    salida = request.form['salida']
+
+    # Verificar si ya registró hoy
+    registro_existente = Registro.query.filter_by(nombre=nombre, entrada=entrada).first()
+    if registro_existente:
+        return "Ya registraste hoy"
+
+    registro = Registro(nombre=nombre, entrada=entrada, salida=salida)
+    db.session.add(registro)
+    db.session.commit()
+
+    enviar_whatsapp(nombre, entrada, salida)
+
+    return "Registro guardado"
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
     if request.method == 'POST':
-        nombre = request.form['nombre']
-        entrada = request.form['entrada']
-        salida = request.form['salida']
-
-        # Validar formato
-        try:
-            datetime.strptime(entrada, '%H:%M')
-            datetime.strptime(salida, '%H:%M')
-        except ValueError:
-            flash('Formato de hora incorrecto. Usa HH:MM')
-            return redirect(url_for('registrar'))
-
-        camarero = Camarero.query.filter_by(nombre=nombre).first()
-        if not camarero:
-            flash('Camarero no registrado')
-            return redirect(url_for('registrar'))
-
-        hoy = datetime.now().date()
-        registro_existente = Registro.query.filter_by(camarero_id=camarero.id, fecha=hoy).first()
-        if registro_existente:
-            flash('Ya has registrado hoy')
-            return redirect(url_for('registrar'))
-
-        registro = Registro(camarero_id=camarero.id, fecha=hoy, entrada=entrada, salida=salida)
-        db.session.add(registro)
-        db.session.commit()
-
-        try:
-            notificar_twilio(camarero.nombre, entrada, salida)
-        except Exception as e:
-            print(f"Error notificando: {e}")
-
-        flash('Registro guardado correctamente')
-        return redirect(url_for('registrar'))
-
-    return render_template('registrar.html')
-
-@app.route('/admin', methods=['GET', 'POST'])
-def admin_login():
-    if request.method == 'POST':
-        nombre = request.form['nombre']
-        password = request.form['password']
-        admin = Admin.query.filter_by(nombre=nombre, password=password).first()
-        if admin:
+        if request.form['username'] == ADMIN_USERNAME and request.form['password'] == ADMIN_PASSWORD:
             session['admin'] = True
-            return redirect(url_for('panel_admin'))
+            return redirect('/admin')
         else:
-            flash('Usuario o contraseña incorrectos')
-    return render_template('login_admin.html')
+            return "Usuario o contraseña incorrecta"
+    return render_template('login.html')
 
-@app.route('/admin/panel')
-def panel_admin():
+@app.route('/admin')
+def admin():
     if not session.get('admin'):
-        flash('Acceso denegado')
-        return redirect(url_for('admin_login'))
+        return redirect('/login')
+    registros = Registro.query.all()
+    return render_template('admin.html', registros=registros)
 
-    camareros = Camarero.query.all()
-    registros = Registr
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)

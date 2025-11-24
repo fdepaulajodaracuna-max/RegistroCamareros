@@ -1,26 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Panel Admin</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>Panel Admin</title>
 </head>
 <body>
-<h2>Panel de Administración</h2>
-<table border="1">
+  <h2>Registros de Horas</h2>
+  <table border="1">
     <tr>
-        <th>Nombre</th>
-        <th>Fecha</th>
-        <th>Entrada</th>
-        <th>Salida</th>
+      <th>Nombre</th>
+      <th>Entrada</th>
+      <th>Salida</th>
     </tr>
-    {% for reg in registros %}
+    {% for registro in registros %}
     <tr>
-        <td>{{ reg.nombre }}</td>
-        <td>{{ reg.fecha }}</td>
-        <td>{{ reg.entrada }}</td>
-        <td>{{ reg.salida }}</td>
+      <td>{{ registro.nombre }}</td>
+      <td>{{ registro.entrada }}</td>
+      <td>{{ registro.salida }}</td>
     </tr>
     {% endfor %}
-</table>
+  </table>
 </body>
 </html>
