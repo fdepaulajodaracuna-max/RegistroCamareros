@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
+app.secret_key = os.getenv("SECRET_KEY")
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -64,16 +64,18 @@ init_db()
 
 # ----------------- FUNCIONES -----------------
 def send_whatsapp(to, message):
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
-    if account_sid and auth_token and from_whatsapp:
+    try:
+        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+        from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
         client = Client(account_sid, auth_token)
         client.messages.create(
             body=message,
             from_=from_whatsapp,
             to=f'whatsapp:{to}'
         )
+    except Exception as e:
+        print("Error Twilio:", e)
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE)
@@ -83,17 +85,19 @@ def get_db_connection():
 # ----------------- RUTAS -----------------
 @app.route("/", methods=["GET", "POST"])
 def index():
+    hoy = datetime.now().strftime("%Y-%m-%d")
     if request.method == "POST":
         nombre = request.form['nombre']
         telefono = request.form['telefono']
+        fecha = request.form['fecha']
         hora_entrada = request.form['hora_entrada']
         hora_salida = request.form['hora_salida']
-        fecha = request.form.get('fecha', datetime.now().strftime("%Y-%m-%d"))
         coche = request.form.get('coche', 'No')
         extra_coche = float(request.form.get('extra_coche', 0))
 
         conn = get_db_connection()
         c = conn.cursor()
+        # Verificar si camarero existe
         c.execute("SELECT id FROM camareros WHERE nombre=? AND telefono=?", (nombre, telefono))
         res = c.fetchone()
         if res:
@@ -103,32 +107,35 @@ def index():
             camarero_id = c.lastrowid
             conn.commit()
 
+        # Verificar si ya registró hoy
         c.execute("SELECT * FROM registros WHERE camarero_id=? AND fecha=?", (camarero_id, fecha))
         if c.fetchone():
-            flash("Ya has registrado tu jornada hoy.", "danger")
+            flash("Ya has registrado tu jornada ese día.", "danger")
             conn.close()
             return redirect(url_for("index"))
 
-        c.execute("INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche) VALUES (?, ?, ?, ?, ?, ?)",
-                  (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche))
+        # Insertar registro
+        c.execute(
+            "INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche) VALUES (?, ?, ?, ?, ?, ?)",
+            (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche)
+        )
         conn.commit()
         conn.close()
 
-        try:
-            send_whatsapp(telefono, f"Hola {nombre}, tu registro de entrada ({hora_entrada}) y salida ({hora_salida}) ha sido guardado. Coche: {coche}, Extra: {extra_coche}€")
-        except Exception as e:
-            print("Error Twilio:", e)
+        # Enviar WhatsApp
+        send_whatsapp(telefono, f"Hola {nombre}, tu registro del {fecha} ({hora_entrada}-{hora_salida}) ha sido guardado. Coche: {coche}, Extra: {extra_coche}€")
 
         flash("Registro guardado correctamente.", "success")
         return redirect(url_for("index"))
 
-    return render_template("index.html")
+    return render_template("index.html", hoy=hoy)
 
 # ----------------- LOGIN ADMIN -----------------
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
     if current_user.is_authenticated:
         return redirect(url_for("admin_dashboard"))
+
     if request.method == "POST":
         usuario = request.form['usuario']
         password = request.form['password']
@@ -151,12 +158,10 @@ def admin_login():
 def admin_dashboard():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''
-        SELECT r.id, c.nombre, c.telefono, r.fecha, r.hora_entrada, r.hora_salida, r.coche, r.extra_coche
-        FROM registros r
-        JOIN camareros c ON r.camarero_id = c.id
-        ORDER BY r.fecha DESC
-    ''')
+    c.execute('''SELECT r.id, c.nombre, c.telefono, r.fecha, r.hora_entrada, r.hora_salida, r.coche, r.extra_coche 
+                 FROM registros r 
+                 JOIN camareros c ON r.camarero_id = c.id
+                 ORDER BY r.fecha DESC''')
     registros = c.fetchall()
     conn.close()
     return render_template("admin_dashboard.html", registros=registros)
@@ -167,20 +172,6 @@ def logout():
     logout_user()
     return redirect(url_for("admin_login"))
 
-# ----------------- ACTUALIZAR EXTRA COCHE -----------------
-@app.route("/admin/update_extra/<int:registro_id>", methods=["POST"])
-@login_required
-def update_extra(registro_id):
-    extra_coche = float(request.form['extra_coche'])
-    coche = request.form.get('coche', 'No')
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE registros SET extra_coche=?, coche=? WHERE id=?", (extra_coche, coche, registro_id))
-    conn.commit()
-    conn.close()
-    flash("Registro actualizado.", "success")
-    return redirect(url_for("admin_dashboard"))
-
 # ----------------- NÓMINAS -----------------
 @app.route("/admin/nominas")
 @login_required
@@ -188,17 +179,17 @@ def nominas():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
-        SELECT c.nombre,
-               SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS horas_trabajadas,
-               SUM(r.extra_coche) AS extra_total
+        SELECT c.nombre, strftime('%Y', r.fecha) AS año, strftime('%m', r.fecha) AS mes,
+               SUM((julianday(r.hora_salida) - julianday(r.hora_entrada)) * 24) AS horas,
+               SUM(r.extra_coche) AS extra
         FROM registros r
-        JOIN camareros c ON r.camarero_id=c.id
-        GROUP BY c.nombre
-        ORDER BY c.nombre
+        JOIN camareros c ON r.camarero_id = c.id
+        GROUP BY c.nombre, año, mes
+        ORDER BY año DESC, mes DESC
     ''')
     datos = c.fetchall()
     conn.close()
-    return render_template("admin_nominas.html", nominas=datos)
+    return render_template("nominas.html", nominas=datos)
 
 # ----------------- RUN APP -----------------
 if __name__ == "__main__":
