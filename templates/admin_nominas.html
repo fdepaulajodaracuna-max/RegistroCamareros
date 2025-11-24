@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Nóminas</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light text-dark">
+<div class="container py-5">
+<h1>Nóminas</h1>
+<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary mb-3">Volver Dashboard</a>
+<table class="table table-striped">
+<tr><th>Nombre</th><th>Horas Trabajadas</th><th>Total Extra (€)</th></tr>
+{% for n in nominas %}
+<tr>
+<td>{{ n.nombre }}</td>
+<td>{{ "%.2f"|format(n.horas_trabajadas) }}</td>
+<td>{{ "%.2f"|format(n.extra_total) }}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+</body>
+</html>
