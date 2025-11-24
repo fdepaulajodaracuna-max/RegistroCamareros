@@ -1,16 +1,15 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin
 import sqlite3
-from datetime import datetime
 from twilio.rest import Client
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
+# Cargar variables de entorno (en Render no necesitas archivo .env)
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
+app.secret_key = os.environ.get("SECRET_KEY")
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -44,7 +43,7 @@ def init_db():
                     fecha TEXT,
                     hora_entrada TEXT,
                     hora_salida TEXT,
-                    coche TEXT DEFAULT 'No',
+                    coche INTEGER DEFAULT 0,
                     extra_coche REAL DEFAULT 0
                 )''')
     # Tabla admin
@@ -64,15 +63,15 @@ init_db()
 
 # ----------------- FUNCIONES -----------------
 def send_whatsapp(to, message):
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_whatsapp = os.getenv("TWILIO_WHATSAPP_FROM")
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_whatsapp = os.environ.get("TWILIO_WHATSAPP_FROM")
     client = Client(account_sid, auth_token)
     try:
         client.messages.create(
             body=message,
-            from_=f"whatsapp:{from_whatsapp}",
-            to=f"whatsapp:{to}"
+            from_=from_whatsapp,
+            to=f'whatsapp:{to}'
         )
     except Exception as e:
         print("Error Twilio:", e)
@@ -85,15 +84,13 @@ def get_db_connection():
 # ----------------- RUTAS -----------------
 @app.route("/", methods=["GET", "POST"])
 def index():
-    today = datetime.now().strftime('%Y-%m-%d')
     if request.method == "POST":
         nombre = request.form['nombre']
         telefono = request.form['telefono']
+        fecha = request.form['fecha']
         hora_entrada = request.form['hora_entrada']
         hora_salida = request.form['hora_salida']
-        fecha = request.form['fecha']
-        coche = request.form.get('coche', 'No')
-        extra_coche = float(request.form.get('extra_coche', 0))
+        coche = 1 if request.form.get('coche') else 0
 
         conn = get_db_connection()
         c = conn.cursor()
@@ -110,30 +107,31 @@ def index():
         # Verificar si ya registró ese día
         c.execute("SELECT * FROM registros WHERE camarero_id=? AND fecha=?", (camarero_id, fecha))
         if c.fetchone():
-            flash("Ya has registrado tu jornada ese día.", "danger")
+            flash("Ya has registrado tu jornada en esta fecha.", "danger")
             conn.close()
             return redirect(url_for("index"))
 
         # Insertar registro
-        c.execute("""INSERT INTO registros 
-                     (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche)
-                     VALUES (?, ?, ?, ?, ?, ?)""",
-                  (camarero_id, fecha, hora_entrada, hora_salida, coche, extra_coche))
+        c.execute(
+            "INSERT INTO registros (camarero_id, fecha, hora_entrada, hora_salida, coche) VALUES (?, ?, ?, ?, ?)",
+            (camarero_id, fecha, hora_entrada, hora_salida, coche)
+        )
         conn.commit()
         conn.close()
 
-        # Enviar WhatsApp al camarero
-        send_whatsapp(telefono, f"Hola {nombre}, tu registro del {fecha} ha sido guardado.\nEntrada: {hora_entrada}\nSalida: {hora_salida}\nCoche: {coche}")
+        # Enviar WhatsApp al camarero y al admin
+        msg_camarero = f"Hola {nombre}, tu registro del {fecha} ({hora_entrada} - {hora_salida}) ha sido guardado. Coche: {'Sí' if coche else 'No'}."
+        send_whatsapp(telefono, msg_camarero)
 
-        # Enviar WhatsApp al administrador
-        admin_num = os.getenv("ADMIN_WHATSAPP")
-        if admin_num:
-            send_whatsapp(admin_num, f"{nombre} ha registrado su jornada.\nFecha: {fecha}\nEntrada: {hora_entrada}\nSalida: {hora_salida}\nCoche: {coche}")
+        admin_phone = os.environ.get("ADMIN_PHONE")
+        if admin_phone:
+            msg_admin = f"Camarero registrado:\nNombre: {nombre}\nTel: {telefono}\nFecha: {fecha}\nEntrada: {hora_entrada}\nSalida: {hora_salida}\nCoche: {'Sí' if coche else 'No'}"
+            send_whatsapp(admin_phone, msg_admin)
 
         flash("Registro guardado correctamente.", "success")
         return redirect(url_for("index"))
 
-    return render_template("index.html", today=today)
+    return render_template("index.html")
 
 # ----------------- LOGIN ADMIN -----------------
 @app.route("/admin", methods=["GET", "POST"])
@@ -166,7 +164,7 @@ def admin_dashboard():
                  ORDER BY r.fecha DESC''')
     registros = c.fetchall()
     conn.close()
-    return render_template("admin_dashboard.html", registros=registros)
+    return render_template("admin.html", registros=registros)
 
 @app.route("/logout")
 @login_required
@@ -174,15 +172,13 @@ def logout():
     logout_user()
     return redirect(url_for("admin_login"))
 
-# ----------------- NÓMINAS -----------------
 @app.route("/admin/nominas")
 @login_required
 def nominas():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''SELECT c.nombre, 
-                        SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS horas,
-                        SUM(r.extra_coche) AS total_extra
+    c.execute('''SELECT c.nombre, SUM((julianday(r.hora_salida)-julianday(r.hora_entrada))*24) AS horas,
+                        SUM(r.extra_coche) AS extra
                  FROM registros r
                  JOIN camareros c ON r.camarero_id=c.id
                  GROUP BY c.nombre
@@ -194,4 +190,4 @@ def nominas():
 # ----------------- RUN APP -----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)

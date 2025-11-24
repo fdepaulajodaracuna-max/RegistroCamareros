@@ -1,54 +1,25 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Registro Camareros</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <title>Registro Camareros</title>
 </head>
-<body class="bg-primary text-white">
-<div class="container py-5">
-    <h1 class="mb-4">Registro de Jornada</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{category}}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    <form method="POST" class="bg-white text-dark p-4 rounded">
-        <div class="mb-3">
-            <label>Nombre</label>
-            <input type="text" name="nombre" class="form-control" required>
-        </div>
-        <div class="mb-3">
-            <label>Teléfono</label>
-            <input type="text" name="telefono" class="form-control" required>
-        </div>
-        <div class="mb-3">
-            <label>Fecha</label>
-            <input type="date" name="fecha" class="form-control" value="{{datetime.now().strftime('%Y-%m-%d')}}" required>
-        </div>
-        <div class="mb-3">
-            <label>Hora Entrada</label>
-            <input type="time" name="hora_entrada" class="form-control" required>
-        </div>
-        <div class="mb-3">
-            <label>Hora Salida</label>
-            <input type="time" name="hora_salida" class="form-control" required>
-        </div>
-        <div class="mb-3">
-            <label>Coche</label>
-            <select name="coche" class="form-control">
-                <option value="No">No</option>
-                <option value="Sí">Sí</option>
-            </select>
-        </div>
-        <div class="mb-3">
-            <label>Extra coche (€)</label>
-            <input type="number" step="0.01" name="extra_coche" class="form-control" value="0">
-        </div>
-        <button type="submit" class="btn btn-success">Registrar</button>
+<body>
+    <h1>Registro de Jornada</h1>
+    <form method="POST">
+        <label>Nombre:</label>
+        <input type="text" name="nombre" required><br>
+        <label>Teléfono:</label>
+        <input type="text" name="telefono" required><br>
+        <label>Fecha:</label>
+        <input type="date" name="fecha" required><br>
+        <label>Hora Entrada:</label>
+        <input type="time" name="hora_entrada" required><br>
+        <label>Hora Salida:</label>
+        <input type="time" name="hora_salida" required><br>
+        <label>¿Coche?:</label>
+        <input type="checkbox" name="coche"><br>
+        <button type="submit">Registrar</button>
     </form>
-</div>
 </body>
 </html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Nóminas</title>
+</head>
+<body>
+    <h1>Nóminas</h1>
+    <table border="1">
+        <tr>
+            <th>Nombre</th>
+            <th>Total Horas</th>
+            <th>Total € coche</th>
+        </tr>
+        {% for n in nominas %}
+        <tr>
+            <td>{{ n.nombre }}</td>
+            <td>{{ "%.2f"|format(n.horas) }}</td>
+            <td>{{ "%.2f"|format(n.extra) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

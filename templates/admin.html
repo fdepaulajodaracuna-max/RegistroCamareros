@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Admin</title>
+</head>
+<body>
+    <h1>Registros</h1>
+    <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
+    <table border="1">
+        <tr>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Fecha</th>
+            <th>Entrada</th>
+            <th>Salida</th>
+            <th>Coche</th>
+            <th>Extra coche</th>
+        </tr>
+        {% for r in registros %}
+        <tr>
+            <td>{{ r.nombre }}</td>
+            <td>{{ r.telefono }}</td>
+            <td>{{ r.fecha }}</td>
+            <td>{{ r.hora_entrada }}</td>
+            <td>{{ r.hora_salida }}</td>
+            <td>{{ 'Sí' if r.coche else 'No' }}</td>
+            <td>{{ r.extra_coche }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
