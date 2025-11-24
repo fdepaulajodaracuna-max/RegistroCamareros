@@ -155,7 +155,7 @@ def admin_login():
         else:
             flash("Usuario o contraseña incorrectos", "danger")
             return redirect(url_for("admin_login"))
-    return render_template("admin_login.html")
+    return render_template("admin.html")
 
 @app.route("/admin/dashboard")
 @login_required
